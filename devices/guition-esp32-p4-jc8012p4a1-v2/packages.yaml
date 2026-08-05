@@ -13,6 +13,7 @@ substitutions:
   screen_rotation_180: "270"
   screen_rotation_270: "0"
   captive_portal_ip: "192.168.4.1"
+  firmware_device_slug: "immich-frame-v2"
   firmware_manifest_url: "https://jtenniswood.github.io/espframe/firmware/jc8012p4a1-v2/manifest.json"
 
 packages:
