@@ -17,9 +17,13 @@ font:
       - "\U000F0164"  # mdi-cloud-off-outline
       - "\U000F0141"  # mdi-chevron-left
       - "\U000F0142"  # mdi-chevron-right
+      - "\U000F02D1"  # mdi-heart
+      - "\U000F0B13"  # mdi-heart-broken
 
 # -----------------------------------------------------------------------------
 # Substitutions for use in labels/buttons
+# (mdi-wifi, mdi-cog, mdi-cloud-off-outline, mdi-chevron-left, mdi-chevron-right,
+#  mdi-heart, mdi-heart-broken)
 # -----------------------------------------------------------------------------
 substitutions:
   icon_wifi: "\U000F05A9"
@@ -27,3 +31,5 @@ substitutions:
   icon_cloud_off: "\U000F0164"
   icon_chevron_left: "\U000F0141"
   icon_chevron_right: "\U000F0142"
+  icon_heart: "\U000F02D1"
+  icon_heart_broken: "\U000F0B13"

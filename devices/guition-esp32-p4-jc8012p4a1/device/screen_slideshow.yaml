@@ -32,6 +32,9 @@ lvgl:
             on_short_click:
               then:
                 - script.execute: slideshow_on_short_click
+            on_long_press:
+              then:
+                - script.execute: slideshow_on_long_press
             on_release:
               then:
                 - script.execute: slideshow_on_release
@@ -53,6 +56,9 @@ lvgl:
             on_short_click:
               then:
                 - script.execute: slideshow_on_short_click
+            on_long_press:
+              then:
+                - script.execute: slideshow_on_long_press
             on_release:
               then:
                 - script.execute: slideshow_on_release
@@ -296,6 +302,26 @@ lvgl:
                   text: $icon_chevron_right
                   text_color: 0xFFFFFF
                   text_font: icon_font_setup
+        - obj:
+            id: favorite_overlay
+            align: CENTER
+            width: 220
+            height: 220
+            radius: 110
+            bg_color: 0x000000
+            bg_opa: 60%
+            border_width: 0
+            pad_all: 0
+            scrollable: false
+            clickable: false
+            hidden: true
+            widgets:
+              - label:
+                  id: favorite_icon_label
+                  align: CENTER
+                  text: $icon_heart
+                  text_font: icon_font_setup
+                  text_color: 0xFF4D6D
         - obj:
             id: connection_failed_overlay
             align: CENTER
@@ -606,6 +632,50 @@ script:
     mode: single
     then:
       - script.stop: backlight_hold_timer
+
+  - id: slideshow_on_long_press
+    mode: single
+    then:
+      - if:
+          condition:
+            lambda: 'return id(touch_started_while_off) || id(photo_source_menu_open);'
+          then:
+            - script.stop: slideshow_on_long_press
+      - script.execute: immich_mark_favorite
+
+  # ---------------------------------------------------------------------------
+  # Favorite overlay: corazón rosa (éxito) o gris (error) durante ~2 s
+  # ---------------------------------------------------------------------------
+  - id: favorite_overlay_show
+    mode: restart
+    then:
+      - lambda: |-
+          ESP_LOGD("immich", "FAVORITE overlay: showing heart icon");
+          lv_label_set_text(id(favorite_icon_label), "\xf3\xb0\x8b\x91");  // mdi-heart U+F02D1
+          lv_obj_set_style_text_color(id(favorite_icon_label), lv_color_hex(0xFF4D6D), LV_PART_MAIN);
+          lv_obj_clear_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
+
+  - id: favorite_overlay_success
+    mode: restart
+    then:
+      - lambda: |-
+          ESP_LOGI("immich", "FAVORITE overlay: success — keeping heart visible for 2s");
+      - delay: 2000ms
+      - lambda: |-
+          ESP_LOGD("immich", "FAVORITE overlay: hiding after success");
+          lv_obj_add_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
+
+  - id: favorite_overlay_error
+    mode: restart
+    then:
+      - lambda: |-
+          ESP_LOGW("immich", "FAVORITE overlay: error — showing broken heart");
+          lv_label_set_text(id(favorite_icon_label), "\xf3\xb0\xac\x93");  // mdi-heart-broken U+F0B13
+          lv_obj_set_style_text_color(id(favorite_icon_label), lv_color_hex(0x888888), LV_PART_MAIN);
+      - delay: 2000ms
+      - lambda: |-
+          ESP_LOGD("immich", "FAVORITE overlay: hiding after error");
+          lv_obj_add_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
 
   - id: hide_connection_failed
     mode: single
