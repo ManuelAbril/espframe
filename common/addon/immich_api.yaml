@@ -1196,25 +1196,12 @@ script:
             Accept: application/json
             x-api-key: !lambda 'return id(immich_api_key_text).state.c_str();'
           body: !lambda |-
-            // Build a JSON array with the primary asset and, when in portrait-pair
-            // mode, the companion asset as well.
-            std::string primary = id(espframe_core).slideshow().state().current_display.asset_id;
-            std::string companion = "";
-            if (id(espframe_core).slideshow().state().portrait.is_pair) {
-              // companion_url is "<base>/api/assets/<id>/thumbnail?…" — extract the id segment
-              std::string cu = id(espframe_core).slideshow().state().current_display.companion_url;
-              size_t start = cu.find("/api/assets/");
-              if (start != std::string::npos) {
-                start += 12;  // length of "/api/assets/"
-                size_t end = cu.find('/', start);
-                if (end == std::string::npos) end = cu.find('?', start);
-                if (end != std::string::npos) companion = cu.substr(start, end - start);
-              }
-            }
-            std::string ids = "\"" + primary + "\"";
-            if (!companion.empty() && companion != primary) ids += ",\"" + companion + "\"";
-            ESP_LOGI("immich", "FAVORITE request: ids=[%s]", ids.c_str());
-            return "{\"ids\":[" + ids + "],\"isFavorite\":true}";
+            std::string body = build_immich_favorite_body(
+              id(espframe_core).slideshow().state().current_display.asset_id,
+              id(espframe_core).slideshow().state().portrait.is_pair,
+              id(espframe_core).slideshow().state().current_display.companion_url);
+            ESP_LOGI("immich", "FAVORITE request body: %s", body.c_str());
+            return body;
           on_response:
             then:
               - lambda: |-

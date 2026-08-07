@@ -169,6 +169,8 @@ def check_runtime_policy(manifest: dict[str, object], errors: list[str]) -> None
     ]
     for root in runtime_files:
         for path in root.rglob("*"):
+            if any(part.startswith(".") for part in path.parts):
+                continue
             if not path.is_file() or path.suffix not in {".yaml", ".yml", ".ts", ".js", ".css", ".html"}:
                 continue
             text = path.read_text(encoding="utf-8")

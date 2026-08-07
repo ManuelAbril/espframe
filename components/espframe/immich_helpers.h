@@ -1139,6 +1139,32 @@ inline std::string build_immich_search_body(int size, bool with_people,
   return body;
 }
 
+inline std::string extract_immich_asset_id_from_url(const std::string &url) {
+  if (url.empty()) return "";
+  size_t start = url.find("/api/assets/");
+  if (start == std::string::npos) return "";
+  start += 12;  // length of "/api/assets/"
+  size_t end = url.find('/', start);
+  if (end == std::string::npos) end = url.find('?', start);
+  if (end == std::string::npos) end = url.length();
+  return url.substr(start, end - start);
+}
+
+inline std::string build_immich_favorite_body(const std::string &primary_id,
+                                               bool is_pair,
+                                               const std::string &companion_url) {
+  if (primary_id.empty()) return "";
+  std::string companion_id;
+  if (is_pair && !companion_url.empty()) {
+    companion_id = extract_immich_asset_id_from_url(companion_url);
+  }
+  std::string ids = "\"" + primary_id + "\"";
+  if (!companion_id.empty() && companion_id != primary_id) {
+    ids += ",\"" + companion_id + "\"";
+  }
+  return "{\"ids\":[" + ids + "],\"isFavorite\":true}";
+}
+
 inline uint32_t immich_metadata_page_for_total(uint32_t total,
                                                uint16_t page_size = IMMICH_METADATA_PAGE_SIZE) {
   if (page_size == 0) page_size = IMMICH_METADATA_PAGE_SIZE;

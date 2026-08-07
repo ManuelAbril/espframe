@@ -329,6 +329,13 @@ static void test_immich_body_helpers() {
          std::string::npos);
   assert(build_immich_search_body(1, false, "Tag", "", "", "t1,t2").find("\"tagIds\":[\"t1\",\"t2\"]") !=
          std::string::npos);
+  assert(extract_immich_asset_id_from_url("http://immich.local/api/assets/123-abc/thumbnail?size=preview") == "123-abc");
+  assert(extract_immich_asset_id_from_url("http://immich.local/api/assets/456-def") == "456-def");
+  assert(extract_immich_asset_id_from_url("").empty());
+  assert(build_immich_favorite_body("asset1", false, "") == "{\"ids\":[\"asset1\"],\"isFavorite\":true}");
+  assert(build_immich_favorite_body("asset1", true, "http://immich.local/api/assets/asset2/thumbnail?size=preview") == "{\"ids\":[\"asset1\",\"asset2\"],\"isFavorite\":true}");
+  assert(build_immich_favorite_body("asset1", true, "http://immich.local/api/assets/asset1/thumbnail") == "{\"ids\":[\"asset1\"],\"isFavorite\":true}");
+  assert(build_immich_favorite_body("", true, "http://immich.local/api/assets/asset2").empty());
   assert(immich_metadata_page_for_total(0) == 1);
   assert(immich_metadata_page_for_total(848) == 1);
   assert(immich_metadata_page_for_total(848, 5) <= 170);
