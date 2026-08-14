@@ -636,6 +636,7 @@ script:
   - id: slideshow_on_long_press
     mode: single
     then:
+      - script.stop: backlight_hold_timer
       - if:
           condition:
             lambda: 'return id(touch_started_while_off) || id(photo_source_menu_open);'
@@ -649,33 +650,46 @@ script:
   - id: favorite_overlay_show
     mode: restart
     then:
-      - lambda: |-
-          ESP_LOGD("immich", "FAVORITE overlay: showing heart icon");
-          lv_label_set_text(id(favorite_icon_label), "\xf3\xb0\x8b\x91");  // mdi-heart U+F02D1
-          lv_obj_set_style_text_color(id(favorite_icon_label), lv_color_hex(0xFF4D6D), LV_PART_MAIN);
-          lv_obj_clear_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
+      - script.stop: backlight_hold_timer
+      - lvgl.label.update:
+          id: favorite_icon_label
+          text: $icon_heart
+          text_color: 0xFF4D6D
+      - lvgl.widget.update:
+          id: favorite_overlay
+          hidden: false
+      - logger.log:
+          level: DEBUG
+          tag: immich
+          format: "FAVORITE overlay: showing heart icon"
 
   - id: favorite_overlay_success
     mode: restart
     then:
-      - lambda: |-
-          ESP_LOGI("immich", "FAVORITE overlay: success — keeping heart visible for 2s");
+      - logger.log:
+          level: INFO
+          tag: immich
+          format: "FAVORITE overlay: success — keeping heart visible for 2s"
       - delay: 2000ms
-      - lambda: |-
-          ESP_LOGD("immich", "FAVORITE overlay: hiding after success");
-          lv_obj_add_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
+      - lvgl.widget.update:
+          id: favorite_overlay
+          hidden: true
 
   - id: favorite_overlay_error
     mode: restart
     then:
-      - lambda: |-
-          ESP_LOGW("immich", "FAVORITE overlay: error — showing broken heart");
-          lv_label_set_text(id(favorite_icon_label), "\xf3\xb0\xac\x93");  // mdi-heart-broken U+F0B13
-          lv_obj_set_style_text_color(id(favorite_icon_label), lv_color_hex(0x888888), LV_PART_MAIN);
+      - logger.log:
+          level: WARN
+          tag: immich
+          format: "FAVORITE overlay: error — showing broken heart"
+      - lvgl.label.update:
+          id: favorite_icon_label
+          text: $icon_heart_broken
+          text_color: 0x888888
       - delay: 2000ms
-      - lambda: |-
-          ESP_LOGD("immich", "FAVORITE overlay: hiding after error");
-          lv_obj_add_flag(id(favorite_overlay), LV_OBJ_FLAG_HIDDEN);
+      - lvgl.widget.update:
+          id: favorite_overlay
+          hidden: true
 
   - id: hide_connection_failed
     mode: single

@@ -1170,7 +1170,8 @@ script:
 
   # ---------------------------------------------------------------------------
   # Mark the currently displayed photo(s) as favourite in Immich.
-  # In portrait-pair mode both the primary slot and its companion are marked.
+  # Uses PUT /api/assets/{id} with {"isFavorite": true}.
+  # In portrait-pair mode, marks the companion asset as well.
   # ---------------------------------------------------------------------------
   - id: immich_mark_favorite
     mode: single
@@ -1190,18 +1191,13 @@ script:
           id: http_req
           method: PUT
           url: !lambda |-
-            return id(immich_url).state + "/api/assets";
+            return id(immich_url).state + "/api/assets/" +
+                   id(espframe_core).slideshow().state().current_display.asset_id;
           request_headers:
             Content-Type: application/json
             Accept: application/json
             x-api-key: !lambda 'return id(immich_api_key_text).state.c_str();'
-          body: !lambda |-
-            std::string body = build_immich_favorite_body(
-              id(espframe_core).slideshow().state().current_display.asset_id,
-              id(espframe_core).slideshow().state().portrait.is_pair,
-              id(espframe_core).slideshow().state().current_display.companion_url);
-            ESP_LOGI("immich", "FAVORITE request body: %s", body.c_str());
-            return body;
+          body: '{"isFavorite":true}'
           on_response:
             then:
               - lambda: |-
@@ -1221,3 +1217,31 @@ script:
                   ESP_LOGW("immich", "FAVORITE request failed (network error) for asset %s",
                            id(espframe_core).slideshow().state().current_display.asset_id.c_str());
                   id(favorite_overlay_error).execute();
+      - if:
+          condition:
+            lambda: |-
+              if (!id(espframe_core).slideshow().state().portrait.is_pair) return false;
+              std::string cu = id(espframe_core).slideshow().state().current_display.companion_url;
+              std::string companion_id = extract_immich_asset_id_from_url(cu);
+              return !companion_id.empty() &&
+                     companion_id != id(espframe_core).slideshow().state().current_display.asset_id;
+          then:
+            - http_request.send:
+                id: http_req
+                method: PUT
+                url: !lambda |-
+                  std::string cu = id(espframe_core).slideshow().state().current_display.companion_url;
+                  return id(immich_url).state + "/api/assets/" + extract_immich_asset_id_from_url(cu);
+                request_headers:
+                  Content-Type: application/json
+                  Accept: application/json
+                  x-api-key: !lambda 'return id(immich_api_key_text).state.c_str();'
+                body: '{"isFavorite":true}'
+                on_response:
+                  then:
+                    - lambda: |-
+                        if (response->status_code == 200) {
+                          ESP_LOGI("immich", "FAVORITE companion OK (HTTP 200)");
+                        } else {
+                          ESP_LOGW("immich", "FAVORITE companion failed: HTTP %d", response->status_code);
+                        }
