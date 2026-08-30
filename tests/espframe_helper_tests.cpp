@@ -15,12 +15,12 @@ struct PhotoMeta {
 };
 
 struct SlotMeta : PhotoMeta {
-  std::string datetime, companion_url, pending_asset_id;
+  std::string datetime, companion_url, pending_asset_id, source_filter_id;
   bool ready = false, is_portrait = false;
 };
 
 struct DisplayMeta : PhotoMeta {
-  std::string datetime, companion_url;
+  std::string datetime, companion_url, source_filter_id;
   bool is_portrait = false;
   bool valid = false;
 };
@@ -102,6 +102,7 @@ inline void copy_slot_to_display(const SlotMeta &slot, DisplayMeta &disp) {
   static_cast<PhotoMeta &>(disp) = static_cast<const PhotoMeta &>(slot);
   disp.datetime = slot.datetime;
   disp.companion_url = slot.companion_url;
+  disp.source_filter_id = slot.source_filter_id;
   disp.is_portrait = slot.is_portrait;
 }
 
@@ -109,6 +110,7 @@ inline void copy_display_to_slot(const DisplayMeta &disp, SlotMeta &slot) {
   static_cast<PhotoMeta &>(slot) = static_cast<const PhotoMeta &>(disp);
   slot.datetime = disp.datetime;
   slot.companion_url = disp.companion_url;
+  slot.source_filter_id = disp.source_filter_id;
   slot.is_portrait = disp.is_portrait;
 }
 
@@ -224,7 +226,24 @@ static void test_immich_body_helpers() {
   assert(!immich_source_has_required_ids("Person", "", "", ""));
   assert(immich_source_has_required_ids("Tag", "", "", " t1,t2 "));
   assert(!immich_source_has_required_ids("Tag", "", "", " , "));
+  assert(immich_source_setup_title("Album") == "Album source needs setup");
+  assert(immich_source_setup_title("Person") == "Person source needs setup");
+  assert(immich_source_setup_title("Tag") == "Tag source needs setup");
+  assert(immich_source_setup_message("Album") ==
+         "Open ESPFrame settings and add at least one album, or choose All Photos.");
+  assert(immich_source_setup_message("Person") ==
+         "Open ESPFrame settings and add at least one person, or choose All Photos.");
+  assert(immich_source_setup_message("Tag") ==
+         "Open ESPFrame settings and add at least one tag, or choose All Photos.");
+  assert(!immich_dimensions_are_portrait(1920, 1080, "6", false));
+  assert(immich_dimensions_are_portrait(1920, 1080, "6", true));
+  assert(immich_dimensions_are_portrait(1080, 1920, "6", false));
   assert(pick_one_uuid_from_csv(" a, b ,, c ") == "a");
+  assert(select_immich_tag_ids("t1,t2", "Any selected tag") == "t1");
+  assert(select_immich_tag_ids("t1,t2", "All selected tags") == "t1,t2");
+  assert(build_immich_metadata_count_cache_key(
+             "Album", "album-a", "", "", "dates") ==
+         "Album|album-a|||dates");
   int album_order_index = 0;
   assert(pick_album_id_for_metadata_search(" a, b, c ", "Album list order", album_order_index) == "a");
   assert(album_order_index == 1);
@@ -293,8 +312,8 @@ static void test_immich_body_helpers() {
   assert(!immich_source_uses_metadata_search("All Photos"));
   assert(!immich_source_uses_metadata_search("Favorites"));
   assert(immich_source_uses_metadata_search("Album"));
-  assert(immich_source_uses_metadata_search("Person"));
-  assert(immich_source_uses_metadata_search("Tag"));
+  assert(!immich_source_uses_metadata_search("Person"));
+  assert(!immich_source_uses_metadata_search("Tag"));
   std::string album_metadata = build_immich_metadata_search_body(
       7, 5, true, "Album", "album-a", "", "", "\"takenAfter\":\"2026-01-01T00:00:00.000Z\"");
   assert(album_metadata.find("\"page\":7") != std::string::npos);
@@ -312,6 +331,13 @@ static void test_immich_body_helpers() {
              .find("\"personIds\":[\"p1\"]") != std::string::npos);
   assert(build_immich_metadata_search_body(1, 1, false, "Tag", "", "", "t1,t2")
              .find("\"tagIds\":[\"t1\",\"t2\"]") != std::string::npos);
+  std::string companion_search = build_immich_companion_search_body(
+      IMMICH_COMPANION_SEARCH_SIZE, "Album", "album-a",
+      "\"takenAfter\":\"2026-01-01T00:00:00.000Z\"");
+  assert(companion_search.find("\"size\":20") != std::string::npos);
+  assert(companion_search.find("\"albumIds\":[\"album-a\"]") != std::string::npos);
+  assert(companion_search.find("\"page\"") == std::string::npos);
+  assert(companion_search.find("\"withPeople\"") == std::string::npos);
   std::string album_statistics = build_immich_statistics_search_body(
       "Album", "album-a", "", "", "\"takenAfter\":\"2026-01-01T00:00:00.000Z\"");
   assert(album_statistics.find("\"type\":\"IMAGE\"") != std::string::npos);
@@ -355,6 +381,34 @@ static void test_immich_request_state() {
   ImmichRequestState state;
   assert(!state.cooldown_active(100));
   assert(state.retry_delay_ms == 2000);
+  assert(state.random_request_is_current());
+  state.begin_random_request();
+  assert(state.random_request_is_current());
+  state.invalidate_photo_source_requests();
+  assert(!state.random_request_is_current());
+  state.begin_random_request();
+  assert(state.random_request_is_current());
+  uint32_t source_generation = state.photo_source_generation;
+  state.reset();
+  assert(state.photo_source_generation == source_generation + 1);
+  assert(!state.random_request_is_current());
+  uint32_t cached_total = 0;
+  bool cached_upper_bound = false;
+  assert(!state.find_metadata_count("album-a", 1000, &cached_total, &cached_upper_bound));
+  state.remember_metadata_count("album-a", 123, true, 1000);
+  assert(state.find_metadata_count("album-a", 1000, &cached_total, &cached_upper_bound));
+  assert(cached_total == 123);
+  assert(cached_upper_bound);
+  assert(state.find_metadata_count(
+      "album-a", 1000 + IMMICH_METADATA_COUNT_CACHE_TTL_MS - 1,
+      &cached_total, &cached_upper_bound));
+  assert(!state.find_metadata_count(
+      "album-a", 1000 + IMMICH_METADATA_COUNT_CACHE_TTL_MS,
+      &cached_total, &cached_upper_bound));
+  state.remember_metadata_count("album-a", 99, false, 2000);
+  assert(state.find_metadata_count("album-a", 2000, &cached_total, &cached_upper_bound));
+  assert(cached_total == 99);
+  assert(!cached_upper_bound);
 
   state.begin_memory_search();
   assert(state.memory_window_offset == -2);
@@ -808,6 +862,34 @@ static void test_slideshow_component_portrait_flow() {
   slideshow.after_display_current(0, no_companion, slot1, slot2, right_error, true, displayed,
                                   companion_slot, false, false);
   assert(!slideshow.has_command());
+
+  // A transient pair download failure can occur while the previous image is
+  // still visible. It must release the workflow gate or slideshow advancement
+  // remains blocked indefinitely.
+  PortraitState visible_left_error;
+  visible_left_error.workflow_busy = true;
+  visible_left_error.left_requested = true;
+  bool already_displayed = true;
+  slideshow.on_portrait_left_error(
+      visible_left_error, reason, already_displayed, false);
+  assert(already_displayed);
+  assert(!visible_left_error.workflow_busy);
+  assert(!visible_left_error.left_requested);
+  assert(slideshow.pop_command(cmd));
+  assert(cmd.kind == SLIDESHOW_COMMAND_LOG_DIAG);
+  assert(!slideshow.has_command());
+
+  PortraitState visible_right_error;
+  visible_right_error.workflow_busy = true;
+  visible_right_error.right_requested = true;
+  slideshow.on_portrait_right_error(
+      visible_right_error, reason, already_displayed, false);
+  assert(already_displayed);
+  assert(!visible_right_error.workflow_busy);
+  assert(!visible_right_error.right_requested);
+  assert(slideshow.pop_command(cmd));
+  assert(cmd.kind == SLIDESHOW_COMMAND_LOG_DIAG);
+  assert(!slideshow.has_command());
 }
 
 static void test_slideshow_component_preload_flow() {
@@ -913,15 +995,18 @@ static void test_slideshow_component_navigation_flow() {
 static void test_slideshow_component_previous_flow() {
   EspFrameSlideshow slideshow;
   SlotMeta slot0 = make_slot("current", false);
+  slot0.source_filter_id = "person-456";
   SlotMeta slot1 = make_slot("slot1", false);
   SlotMeta slot2 = make_slot("slot2", false);
   DisplayMeta current;
   copy_slot_to_display(slot0, current);
+  assert(current.source_filter_id == "person-456");
   DisplayMeta previous;
   previous.asset_id = "previous";
   previous.image_url = "https://example.test/previous";
   previous.datetime = "2026-04-20T10:00:00";
   previous.companion_url = "https://example.test/previous-companion";
+  previous.source_filter_id = "album-123";
   previous.is_portrait = true;
   previous.valid = true;
   PortraitState portrait;
@@ -935,10 +1020,13 @@ static void test_slideshow_component_previous_flow() {
   assert(active_slot == 2);
   assert(!displayed);
   assert(current.asset_id == "previous");
+  assert(current.source_filter_id == "album-123");
+  assert(previous.source_filter_id == "person-456");
   assert(slot2.pending_asset_id == "previous");
   assert(slot2.is_portrait);
   assert(slot2.datetime == "2026-04-20T10:00:00");
   assert(slot2.companion_url == "https://example.test/previous-companion");
+  assert(slot2.source_filter_id == "album-123");
   assert(flags.fetch_in_flight[2]);
   SlideshowCommand cmd;
   assert(slideshow.pop_command(cmd));
@@ -1208,8 +1296,8 @@ static void test_configuration_contract_capabilities() {
   using namespace esphome::espframe::contract;
   static_assert(CONTRACT_VERSION == 2);
   static_assert(API_VERSION == 1);
-  static_assert(SETTING_COUNT == 35);
-  static_assert(CONFIGURATION_FIELD_COUNT == 49);
+  static_assert(SETTING_COUNT == 36);
+  static_assert(CONFIGURATION_FIELD_COUNT == 50);
   assert(std::string(CAPABILITIES_PATH) == "/espframe/api/v1/capabilities");
   assert(std::string(CONFIGURATION_PATH) == "/espframe/api/v1/configuration");
   const std::string capabilities(CAPABILITIES_JSON);

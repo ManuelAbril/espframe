@@ -133,6 +133,30 @@ void ImageDecoder::draw_rgb565_block(int x, int y, int w, int h, const uint8_t *
     return;
   }
 
+  // RGB565 source and destination buffers are naturally two-byte aligned.
+  // Preserve the packed bytes with one native load/store instead of invoking
+  // memcpy for every scaled pixel (up to a million calls per display image).
+  if (bpp_bytes == 2) {
+    auto *dst_pixels = reinterpret_cast<uint16_t *>(this->image_->buffer_);
+    auto *src_pixels = reinterpret_cast<const uint16_t *>(data);
+    for (int row = 0; row < h; row++) {
+      int src_y = y + row;
+      int dst_y = static_cast<int>(src_y * this->y_scale_) + this->y_offset_;
+      if (dst_y < 0 || dst_y >= this->image_->buffer_height_)
+        continue;
+
+      int dst_x_start = std::max(0, this->x_offset_);
+      int dst_x_end = std::min(this->x_offset_ + this->scaled_width_, this->image_->buffer_width_);
+      uint16_t *dst_row = dst_pixels + dst_y * this->image_->buffer_width_;
+      const uint16_t *src_row = src_pixels + row * w;
+      for (int dst_x = dst_x_start; dst_x < dst_x_end; dst_x++) {
+        int src_col = this->src_x_lut_[dst_x - this->x_offset_];
+        dst_row[dst_x] = src_row[src_col];
+      }
+    }
+    return;
+  }
+
   for (int row = 0; row < h; row++) {
     int src_y = y + row;
     int dst_y = static_cast<int>(src_y * this->y_scale_) + this->y_offset_;
@@ -193,6 +217,16 @@ void ImageDecoder::fill_row_gap(int gap_start, int gap_end, int src_row_y) {
   for (int fy = gap_start; fy < gap_end; fy++) {
     memcpy(this->image_->buffer_ + fy * row_bytes, src_row, row_bytes);
   }
+}
+
+void ImageDecoder::fill_trailing_row_gap(int gap_start) {
+  if (this->y_scale_ <= 1.0 || gap_start <= 0) return;
+  int content_end = std::min(
+      std::max(this->y_offset_ + this->scaled_height_, 0),
+      this->image_->buffer_height_);
+  if (gap_start >= content_end) return;
+  int src_row_y = std::min(gap_start - 1, this->image_->buffer_height_ - 1);
+  this->fill_row_gap(gap_start, content_end, src_row_y);
 }
 
 DownloadBuffer::DownloadBuffer(size_t size) : size_(size) {
