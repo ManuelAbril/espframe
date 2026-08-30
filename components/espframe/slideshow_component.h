@@ -116,6 +116,8 @@ struct SlideshowRuntimeState {
   bool portrait_preload_left_ready = false;
   bool portrait_preload_right_ready = false;
   bool portrait_search_expanded = false;
+  bool portrait_search_exhaustive = false;
+  uint32_t portrait_search_page = 1;
   uint32_t portrait_search_generation = 0;
   uint32_t portrait_search_request_generation = 0;
 
@@ -181,6 +183,8 @@ class EspFrameSlideshow {
         portrait_primary_asset_id);
     if (action == SLIDESHOW_ACTION_FETCH_COMPANION) {
       this->state_.portrait_search_expanded = false;
+      this->state_.portrait_search_exhaustive = false;
+      this->state_.portrait_search_page = 1;
       this->state_.portrait_search_generation++;
     }
     this->emit_action(action, slot);
@@ -230,6 +234,8 @@ class EspFrameSlideshow {
     portrait_search_datetime = meta.datetime;
     companion_target_slot = active_slot;
     portrait_search_expanded = false;
+    this->state_.portrait_search_exhaustive = false;
+    this->state_.portrait_search_page = 1;
     this->state_.portrait_search_generation++;
     this->emit_command(SLIDESHOW_COMMAND_DEFER_COMPANION_SEARCH, active_slot, 200);
     return true;
@@ -434,6 +440,11 @@ class EspFrameSlideshow {
       return false;
     }
 
+    const int previous_slot = (active_slot + 2) % 3;
+    // An API or image callback for this slot could overwrite the history that
+    // is about to be restored. Let that refill finish before accepting back.
+    if (flags.fetch_in_flight[previous_slot]) return false;
+
     int current_slot = active_slot;
     SlotMeta &current_meta = this->slot_mut_(current_slot, slot0, slot1, slot2);
     DisplayMeta tmp = current_display;
@@ -443,7 +454,6 @@ class EspFrameSlideshow {
     prev_display = tmp;
 
     portrait = PortraitState{};
-    int previous_slot = (active_slot + 2) % 3;
     active_slot = previous_slot;
     active_slot_displayed = false;
 
@@ -595,6 +605,8 @@ class EspFrameSlideshow {
     this->state_.rejected_fetch_target = slot;
     this->state_.last_advance_ms = now_ms;
     this->state_.portrait_search_expanded = false;
+    this->state_.portrait_search_exhaustive = false;
+    this->state_.portrait_search_page = 1;
     this->state_.portrait_search_generation++;
     this->emit_command(SLIDESHOW_COMMAND_REFETCH_REJECTED_SLOT, slot, 1200);
   }
@@ -723,6 +735,8 @@ class EspFrameSlideshow {
     this->state_.portrait_preload_left_ready = false;
     this->state_.portrait_preload_right_ready = false;
     this->state_.portrait_search_expanded = false;
+    this->state_.portrait_search_exhaustive = false;
+    this->state_.portrait_search_page = 1;
     this->state_.portrait_search_generation++;
     this->state_.portrait_search_request_generation = 0;
     this->state_.rejected_fetch_target = -1;
